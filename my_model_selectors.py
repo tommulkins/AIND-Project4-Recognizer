@@ -83,9 +83,9 @@ class SelectorBIC(ModelSelector):
 
         for i in range(self.min_n_components, self.max_n_components):
             try:
-                model = GaussianHMM(n_components=i, n_iter=1000).fit(X)
-                logL = model.score(X)
-                p = i ** 2 + 2 * i * len(X) - 1
+                model = GaussianHMM(n_components=i, n_iter=1000).fit(X, lengths)
+                logL = model.score(X, lengths)
+                p = i ** 2 + 2 * i * len(X[0])
                 bic_score = -2 * logL + p * math.log(len(X))
                 if bic_score > max_score or max_score == 0:
                     max_score = bic_score
@@ -122,14 +122,13 @@ class SelectorDIC(ModelSelector):
             wc = 0
 
             try:
-                model = GaussianHMM(n_components=i, n_iter=1000).fit(X)
+                model = GaussianHMM(n_components=i, n_iter=1000).fit(X, lengths)
                 for word in self.hwords:
                     if word == self.this_word:
                         continue
-                    X, lengths = self.hwords[word]
                     antiLogL += model.score(X, lengths)
                     wc += 1
-                scores[i] = model.score(X)
+                scores[i] = model.score(X, lengths)
                 antiLogL /= float(wc)
                 antiRes[i] = antiLogL
             except ValueError:
