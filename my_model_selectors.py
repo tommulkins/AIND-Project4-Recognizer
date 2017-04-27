@@ -76,8 +76,24 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        # implement model selection based on BIC scores
+        X, lengths = self.hwords[self.this_word]
+        max_score = 0
+        num_components = self.min_n_components
+
+        for i in range(self.min_n_components, self.max_n_components):
+            try:
+                model = GaussianHMM(n_components=i, n_iter=1000).fit(X)
+                logL = model.score(X)
+                p = i ** 2 + 2 * i * len(X) - 1
+                bic_score = -2 * logL + p * math.log(len(X))
+                if bic_score > max_score or max_score == 0:
+                    max_score = bic_score
+                    num_components = i
+            except ValueError:
+                pass
+
+        return self.base_model(num_components)
 
 
 class SelectorDIC(ModelSelector):
@@ -92,8 +108,38 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        # implement model selection based on DIC scores
+        X, lengths = self.hwords[self.this_word]
+        max_score = 0
+        num_components = self.min_n_components
+
+        scores = {}
+        antiRes = {}
+        M = self.max_n_components - self.min_n_components
+
+        for i in range(self.min_n_components, self.max_n_components):
+            antiLogL = 0.0
+            wc = 0
+
+            try:
+                model = GaussianHMM(n_components=i, n_iter=1000).fit(X)
+                for word in self.hwords:
+                    if word == self.this_word:
+                        continue
+                    X, lengths = self.hwords[word]
+                    antiLogL += model.score(X, lengths)
+                    wc += 1
+                scores[i] = model.score(X)
+                antiLogL /= float(wc)
+                antiRes[i] = antiLogL
+            except ValueError:
+                pass
+        for i in scores:
+            dic_score = scores[i] - antiRes[i]
+            if (dic_score > max_score or max_score == 0):
+                max_score = dic_score
+                num_components = i
+        return self.base_model(num_components)
 
 
 class SelectorCV(ModelSelector):
@@ -101,8 +147,33 @@ class SelectorCV(ModelSelector):
 
     '''
 
+    from sklearn.model_selection import KFold
+    ''' Split dataset into k consecutive folds (without shuffling by default). Each fold is then used once as a validation while the k - 1 remaining folds form the training set.
+    '''
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        # implement model selection using CV
+        X, lengths = self.hwords[self.this_word]
+
+        split_method = KFold()
+
+        for cv_train_i, cv_test_i in split_method.split(X):
+            X_train, X_test = X[cv_train_i], X[cv_test_i]
+            length_train, length_test = [len(cv_train_i)], [len(cv_test_i)]
+
+        max_score = 0
+        num_components = self.min_n_components
+
+        for i in range(self.min_n_components, self.max_n_components):
+            try:
+                model = GaussianHMM(n_components=i, n_iter=1000).fit(X_train, length_train)
+                logL = model.score(X_test, length_test)
+                if logL > max_score or max_score == 0:
+                    max_score = logL
+                    num_components = i
+            except ValueError:
+                pass
+
+        return self.base_model(num_components)
+

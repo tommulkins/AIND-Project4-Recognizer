@@ -1,5 +1,6 @@
 import warnings
 from asl_data import SinglesData
+import re # Regular Expression library
 
 
 def recognize(models: dict, test_set: SinglesData):
@@ -20,6 +21,23 @@ def recognize(models: dict, test_set: SinglesData):
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     probabilities = []
     guesses = []
-    # TODO implement the recognizer
+    # implement the recognizer
+    words = test_set.get_all_Xlengths()
+
+    for i in words:
+        word = words[i][0]
+        probability = {}
+        for key in models:
+            model = models[key]
+            try:
+                probability[key] = model.score(word)
+            except:
+                probability[key] = 0
+
+        probabilities.append(probability)
+        guess = max(probability, key=probability.get)
+        guess = re.sub('\d', '', guess) # Remove digits
+        guesses.append(guess)
+
     # return probabilities, guesses
-    raise NotImplementedError
+    return probabilities, guesses
