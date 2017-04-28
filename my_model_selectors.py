@@ -85,9 +85,9 @@ class SelectorBIC(ModelSelector):
             try:
                 model = GaussianHMM(n_components=i, n_iter=1000).fit(X, lengths)
                 logL = model.score(X, lengths)
-                p = i ** 2 + 2 * i * len(X[0])
+                p = i ** 2 + 2 * i * len(X[0]) - 1
                 bic_score = -2 * logL + p * math.log(len(X))
-                if bic_score > max_score or max_score == 0:
+                if bic_score < max_score or max_score == 0:
                     max_score = bic_score
                     num_components = i
             except ValueError:
@@ -115,7 +115,6 @@ class SelectorDIC(ModelSelector):
 
         scores = {}
         antiRes = {}
-        M = self.max_n_components - self.min_n_components
 
         for i in range(self.min_n_components, self.max_n_components):
             antiLogL = 0.0
@@ -126,18 +125,22 @@ class SelectorDIC(ModelSelector):
                 for word in self.hwords:
                     if word == self.this_word:
                         continue
-                    antiLogL += model.score(X, lengths)
+                    antiLog_X, antiLog_lengths = self.hwords[word]
+                    antiLogL += model.score(antiLog_X, antiLog_lengths)
                     wc += 1
                 scores[i] = model.score(X, lengths)
                 antiLogL /= float(wc)
                 antiRes[i] = antiLogL
+
+                dic_score = scores[i] - antiRes[i]
+
+                if (dic_score > max_score or max_score == 0):
+                    max_score = dic_score
+                    num_components = i
+
             except ValueError:
                 pass
-        for i in scores:
-            dic_score = scores[i] - antiRes[i]
-            if (dic_score > max_score or max_score == 0):
-                max_score = dic_score
-                num_components = i
+
         return self.base_model(num_components)
 
 
@@ -146,33 +149,31 @@ class SelectorCV(ModelSelector):
 
     '''
 
-    from sklearn.model_selection import KFold
-    ''' Split dataset into k consecutive folds (without shuffling by default). Each fold is then used once as a validation while the k - 1 remaining folds form the training set.
-    '''
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
         # implement model selection using CV
-        X, lengths = self.hwords[self.this_word]
+        try:
+            best_score = float("Inf")
+            best_model = None
 
-        split_method = KFold()
+            for i in range(self.min_n_components, self.max_n_components + 1):
+                split_method = KFold(n_splits=2)
 
-        for cv_train_i, cv_test_i in split_method.split(X):
-            X_train, X_test = X[cv_train_i], X[cv_test_i]
-            length_train, length_test = [len(cv_train_i)], [len(cv_test_i)]
+                model = self.base_model(i)
+                scores = []
 
-        max_score = 0
-        num_components = self.min_n_components
+                for train_i, test_i in split_method.split(self.sequences):
+                    self.X, self.lengths = combine_sequences(train_i, self.sequences)
+                    X, lengths = combine_sequences(test_i, self.sequences)
+                    scores.append(model.score(X, lengths))
 
-        for i in range(self.min_n_components, self.max_n_components):
-            try:
-                model = GaussianHMM(n_components=i, n_iter=1000).fit(X_train, length_train)
-                logL = model.score(X_test, length_test)
-                if logL > max_score or max_score == 0:
-                    max_score = logL
-                    num_components = i
-            except ValueError:
-                pass
+                mean_score = np.mean(scores)
+                if mean_score < best_score:
+                    best_score = mean_score
+                    best_model = model
 
-        return self.base_model(num_components)
+            return best_model
+        except:
+            return self.base_model(self.n_constant)
 
